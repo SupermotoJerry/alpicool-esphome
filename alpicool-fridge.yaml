@@ -1,0 +1,149 @@
+# Alpicool / BrassMonkey / MAENTUM dual-zone fridge -> MQTT, for an ESP32 in the car.
+#
+# The ESP32 holds the BLE connection to the fridge and publishes over MQTT, so it
+# works away from home as long as the ESP32 has Wi-Fi (e.g. a phone hotspot or a
+# 4G router) and can reach the broker.
+#
+# While the ESP32 is connected, the phone app can't connect (the fridge accepts
+# only one client).
+
+substitutions:
+  name: alpicool-fridge
+  fridge_mac: "XX:XX:XX:XX:XX:XX"  # nRF Connect (Android) shows it; close the phone app first
+
+esphome:
+  name: ${name}
+  # Windows only: ESP-IDF can't build in a path with spaces. Remove on Linux/HA.
+  build_path: C:/esp/alpicool-fridge
+
+esp32:
+  variant: esp32c6
+  board: esp32-c6-devkitc-1  # Waveshare ESP32-C6 (Zero / mini)
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: components
+  # Or, once pushed to GitHub:
+  # - source: github://SupermotoJerry/alpicool-esphome
+  #   components: [alpicool_fridge]
+
+logger:
+  # INFO logs one line when the fridge comes or goes; DEBUG adds every status
+  # change and sensor publish, VERBOSE the raw BLE frames.
+  level: INFO
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# MQTT instead of the Home Assistant API. With Home Assistant's MQTT
+# integration, discovery creates the entities automatically.
+mqtt:
+  broker: !secret mqtt_broker
+  port: 8883
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+  # Port 8883 needs TLS; the ESP-IDF framework verifies against this CA.
+  # Drop the port and this line for a plain broker on 1883.
+  certificate_authority: !secret mqtt_ca_certificate
+  # Publish "None" rather than "nan" when the fridge is out of reach.
+  publish_nan_as_none: true
+  discovery: true
+
+esp32_ble_tracker:
+  scan_parameters:
+    # Only needed to find the fridge again after it drops off.
+    active: false
+
+ble_client:
+  - mac_address: ${fridge_mac}
+    id: fridge_ble
+
+alpicool_fridge:
+  - id: fridge
+    ble_client_id: fridge_ble
+    update_interval: 30s
+    # Values go unavailable after this long without a status.
+    status_timeout: 120s
+    # Some models only answer after a bind (fridge shows "APP", press its button once).
+    bind_on_connect: false
+
+binary_sensor:
+  - platform: alpicool_fridge
+    online:
+      name: "Fridge online"
+    dual_zone:
+      name: "Fridge dual zone"
+
+sensor:
+  - platform: alpicool_fridge
+    left_current_temperature:
+      name: "Fridge left temperature"
+      filters:
+        # Only publish on change (or every 5 min) to save mobile data.
+        - or:
+            - delta: 0.5
+            - heartbeat: 300s
+    right_current_temperature:
+      name: "Fridge right temperature"
+      filters:
+        - or:
+            - delta: 0.5
+            - heartbeat: 300s
+    left_target_temperature:
+      name: "Fridge left target"
+    right_target_temperature:
+      name: "Fridge right target"
+    battery_percent:
+      name: "Fridge battery"
+    battery_voltage:
+      name: "Fridge input voltage"
+      filters:
+        - or:
+            - delta: 0.2
+            - heartbeat: 300s
+
+climate:
+  - platform: alpicool_fridge
+    zone: left
+    name: "Fridge left"
+  - platform: alpicool_fridge
+    zone: right
+    name: "Fridge right"
+
+switch:
+  - platform: alpicool_fridge
+    power:
+      name: "Fridge power"
+    lock:
+      name: "Fridge button lock"
+
+select:
+  - platform: alpicool_fridge
+    run_mode:
+      name: "Fridge mode"
+      # Some dual-zone models use this setting for Fridge/Freezer instead:
+      # options: ["Fridge", "Freezer"]
+    battery_saver:
+      name: "Fridge battery protection"
+
+number:
+  - platform: alpicool_fridge
+    left_target_temperature:
+      name: "Fridge left setpoint"
+    right_target_temperature:
+      name: "Fridge right setpoint"
+    left_hysteresis:
+      name: "Fridge left hysteresis"
+    right_hysteresis:
+      name: "Fridge right hysteresis"
+    start_delay:
+      name: "Fridge start delay"

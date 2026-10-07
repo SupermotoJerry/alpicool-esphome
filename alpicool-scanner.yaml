@@ -1,0 +1,46 @@
+# Finds the fridge's MAC address. No Wi-Fi needed; read the output over USB:
+#   esphome run alpicool-scanner.yaml
+#
+# Every nearby BLE device is logged once; likely fridges are marked "FRIDGE?".
+# Close the fridge's phone app first, a connected fridge stops advertising.
+
+esphome:
+  name: alpicool-scanner
+  # Windows only: ESP-IDF can't build in a path with spaces. Remove on Linux/HA.
+  build_path: C:/esp/alpicool-scanner
+
+esp32:
+  variant: esp32c6
+  board: esp32-c6-devkitc-1
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+esp32_ble_tracker:
+  scan_parameters:
+    # Active scanning also asks devices for their name.
+    active: true
+  on_ble_advertise:
+    - then:
+        - lambda: |-
+            static std::vector<uint64_t> seen;
+            uint64_t addr = x.address_uint64();
+            if (std::find(seen.begin(), seen.end(), addr) != seen.end())
+              return;
+            seen.push_back(addr);
+            bool has_service = false;
+            for (auto &uuid : x.get_service_uuids()) {
+              if (uuid == esp32_ble_tracker::ESPBTUUID::from_uint16(0x1234))
+                has_service = true;
+            }
+            std::string name = x.get_name();
+            // Names reported by BrassMonkeyFridgeMonitor and smarthomeundmore.de
+            bool known_name = name.rfind("WT-", 0) == 0 || name.rfind("A1-", 0) == 0 ||
+                              name.rfind("AK1-", 0) == 0 || name.rfind("AK2-", 0) == 0 ||
+                              name.rfind("AK3-", 0) == 0 || name.rfind("W1001", 0) == 0;
+            ESP_LOGI("scan", "%s %s  rssi %d  name '%s'%s", has_service || known_name ? "FRIDGE?" : "       ",
+                     x.address_str().c_str(), x.get_rssi(), name.c_str(),
+                     has_service ? "  (service 0x1234)" : "");
