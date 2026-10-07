@@ -3,3 +3,5 @@ secrets.yaml
 __pycache__/
 # Upstream repos cloned for reference
 ref_*/
+# Personal dashboard copy (has the real fridge MAC)
+*.dashboard.yaml
