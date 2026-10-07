@@ -102,7 +102,7 @@ void AlpicoolFridge::update() {
   // A switched-off fridge is normal, not an error: log transitions only, never per poll.
   if (this->has_status_ && millis() - this->last_status_ms_ > this->status_timeout_) {
     ESP_LOGI(TAG, "[%s] No status for %us, values now unavailable", this->parent_->address_str(),
-             this->status_timeout_ / 1000);
+             static_cast<unsigned>(this->status_timeout_ / 1000));
     this->has_status_ = false;
     this->publish_offline_();
   }
@@ -371,7 +371,7 @@ void AlpicoolFridge::dump_config() {
                 "Alpicool fridge:\n"
                 "  Bind on connect: %s\n"
                 "  Status timeout: %us",
-                YESNO(this->bind_on_connect_), this->status_timeout_ / 1000);
+                YESNO(this->bind_on_connect_), static_cast<unsigned>(this->status_timeout_ / 1000));
   LOG_UPDATE_INTERVAL(this);
 #ifdef USE_BINARY_SENSOR
   LOG_BINARY_SENSOR("  ", "Online", this->online_binary_sensor_);
